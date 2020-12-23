@@ -4,8 +4,12 @@
       <p>Время: {{time}}</p>
       <p v-model="steps" class="steps">Количество ходов: {{steps}}</p>
     </div>
-    <div class="game-board" v-model="gameBoard" @click="step()">
-      <div class="tile" v-for="tile of tiles" :key="tile" @click="clicked=tile">{{tile}}</div>
+    <div class="game-board">
+      <div class="row" v-for="(row,y) in cells" :key="row.toString()">
+        <div class="tile" v-for="(item,x) in row" :class="{ hole:  item == '' }" :key="item" @click="step(x,y)">
+          {{ item }}
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -14,19 +18,22 @@
   export default {
     name: "Game",
     data() {
+      let size = 4;
       return {
-        gameBoard: null,
-        tiles: [], // ячейки
-        clicked: null, // элемент, на который нажал пользователь
-        steps: 0, // количество шагов
+        size: size,
+        cells: this.generateCells(size),
+        holePos: [size - 1, size - 1],
+        steps: 0,
         begin: 0,
         timeStart: 0,
         timeEnd: 0,
         between: null
-      }
+      };
+    },
+    created() {
+      this.shuffleBoard(this.size * 40);
     },
     computed: {
-      // таймер
       minutes() {
         return Math.floor((this.between % 3600000) / 60000);
       },
@@ -38,12 +45,71 @@
           + (this.seconds < 10 ? '0' + this.seconds : this.seconds);
       },
     },
-    mounted() {
-      // устанавливаем ячейки в разном порядке
-      this.tiles = ['1', '2', '3', '4', '5', '6', '7', '8'].sort(() => Math.random() - 0.5).concat([''])
-    },
     methods: {
-      //функция для запуска таймера
+      generateCells(size) {
+        let map = new Array(size).fill(0).map((x, v) => new Array(size).fill(0).map((y, u) => u + v * size + 1));
+        map[size - 1][size - 1] = '';
+        return map
+      },
+      checkOption(opt, cell) {
+        let newXPos = opt[0] + cell[0]
+        let newYPos = opt[1] + cell[1]
+        return newXPos >= 0 && newYPos >= 0 && newXPos < this.size && newYPos < this.size
+      },
+      getOptions(cell) {
+        return [[-1, 0], [0, -1], [1, 0], [0, 1]].filter(opt => this.checkOption(opt, cell))
+      },
+      getRndInteger(min, max) {
+        return Math.floor(Math.random() * (max - min)) + min;
+      },
+      shuffleBoard(nIter) {
+        for (let i = 0; i < nIter; i++) {
+          let options = this.getOptions(this.holePos);
+          let nOpt = this.getRndInteger(0, options.length);
+          let selectedMove = options[nOpt]
+          this.makeMove(selectedMove)
+        }
+      },
+      verifyBoard() {
+        for (let y = 0; y <= this.size; y++) {
+          for (let x = 0; x < this.size; x++) {
+            let cellNum = y * this.size + x + 1
+
+            if (cellNum == this.size * this.size)
+              return true;
+            else if (this.cells[y][x] != cellNum)
+              return false;
+          }
+        }
+      },
+      makeMove(move) {
+        let newXPos = this.holePos[0] + move[0]
+        let newYPos = this.holePos[1] + move[1]
+        this.cells[this.holePos[1]][this.holePos[0]] = this.cells[newYPos][newXPos]
+        this.cells[newYPos][newXPos] = ''
+        this.holePos[0] = newXPos
+        this.holePos[1] = newYPos
+        this.$forceUpdate();
+      },
+      checkCell(x, y) {
+        let emptyX = this.holePos[0]
+        let emptyY = this.holePos[1]
+        return ((y === emptyY && (x + 1 === emptyX || x - 1 === emptyX))
+          ||
+          (x === emptyX && (y + 1 === emptyY || y - 1 === emptyY)))
+      },
+      step(x, y) {
+        if (this.checkCell(x, y)) {
+          this.interval();
+          this.begin += 1
+          this.steps += 1
+          let moveX = x - this.holePos[0]
+          let moveY = y - this.holePos[1]
+          this.makeMove([moveX, moveY])
+          if (this.verifyBoard())
+            alert("Победа!")
+        }
+      },
       interval() {
         if (!this.begin) {
           this.timeStart = new Date().getTime();
@@ -54,90 +120,15 @@
           }, 1000);
         }
       },
-      step() {
-        const gameState = [
-          [this.tiles[0], this.tiles[1], this.tiles[2]],
-          [this.tiles[3], this.tiles[4], this.tiles[5]],
-          [this.tiles[6], this.tiles[7], this.tiles[8]],
-        ]
-
-
-        //находим позиции элементов
-        let x, y;
-
-        gameState.forEach((row, rowIndex) => {
-          row.forEach((column, columnIndex) => {
-            if (column == this.clicked) {
-              x = rowIndex;
-              y = columnIndex;
-            }
-          })
-        })
-
-        //находим позицию пустой ячейки
-        let emptyX, emptyY;
-
-        gameState.forEach((row, rowIndex) => {
-          row.forEach((column, columnIndex) => {
-            if (column == '') {
-              emptyX = rowIndex;
-              emptyY = columnIndex;
-            }
-          })
-        })
-
-
-        // проверяем можно ли сделать ход
-        if ((y === emptyY && (x + 1 === emptyX || x - 1 === emptyX))
-          ||
-          (x === emptyX && (y + 1 === emptyY || y - 1 === emptyY))) {
-          this.interval();
-          this.begin += 1
-          this.steps += 1
-          const temp = gameState[x][y];
-          gameState[x][y] = gameState[emptyX][emptyY];
-          gameState[emptyX][emptyY] = temp;
-
-
-          let tiles = this.tiles
-          let el = this.clicked
-          let newPositions = []
-
-          // находим индексы пустой ячейки и ячейки, на которую нажали.
-          // формируем массив с новым порядком элементов.
-          function render() {
-            let indEmpty = tiles.indexOf('')
-            let indClicked = tiles.indexOf(el)
-            tiles[indEmpty] = el
-            tiles[indClicked] = ''
-            newPositions = tiles
-            tiles.forEach((el, ind) => {
-              while (el[ind] == 9) {
-                newPositions.push(el)
-              }
-            })
-          }
-
-          // вызываем функцию, которая возвращает новый порядок ячеек
-          render()
-          newPositions = JSON.parse(JSON.stringify(newPositions))
-          this.tiles = newPositions
-
-          // проверяем в правильном ли порядке стоят ячейки
-          if (JSON.stringify(this.tiles) === JSON.stringify(['1', '2', '3', '4', '5', '6', '7', '8', ''])) {
-            alert("Победа!")
-          }
-        }
-      }
     }
   }
 </script>
 
 <style scoped lang="scss">
+
   .container {
     display: flex;
     justify-content: center;
-    align-items: center;
 
     p {
       color: white;
@@ -145,21 +136,23 @@
       margin: 20px 40px;
     }
 
-    .game-board {
-      width: 450px;
-      height: 450px;
+    .row {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: row;
 
       .tile {
-        border: 2px solid white;
-        height: 150px;
-        width: 150px;
+        border: 1px solid white;
+        height: 100px;
+        width: 100px;
         color: white;
         font-size: 40px;
         display: flex;
         justify-content: center;
         align-items: center;
+      }
+
+      .hole {
+        background: white;
       }
     }
   }
