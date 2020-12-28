@@ -5,11 +5,9 @@
       <p v-model="steps" class="steps">Количество ходов: {{steps}}</p>
     </div>
     <div class="game-board">
-      <div class="row" v-for="(row,y) in cells" :key="row.toString()">
-        <div class="tile" v-for="(item,x) in row" :class="{ hole:  item == '' }" :key="item" @click="step(x,y)">
+        <div class="tile" v-for="(item,x) in cells" :class="{ hole:  item == '' }" :key="item" @click="clicked=item; step(item, x)">
           {{ item }}
         </div>
-      </div>
     </div>
   </div>
 </template>
@@ -22,16 +20,21 @@
       return {
         size: size,
         cells: this.generateCells(size),
-        holePos: [size - 1, size - 1],
+        holePos: size * size - 1,
         steps: 0,
         begin: 0,
         timeStart: 0,
         timeEnd: 0,
-        between: null
+        between: null,
+        xPos: null,
+        yPos: null,
+        holeXPos: size - 1,
+        holeYPos: size - 1,
+        clicked: null
       };
     },
     created() {
-      this.shuffleBoard(this.size * 40);
+      this.shuffleBoard(7);
     },
     computed: {
       minutes() {
@@ -47,17 +50,18 @@
     },
     methods: {
       generateCells(size) {
-        let map = new Array(size).fill(0).map((x, v) => new Array(size).fill(0).map((y, u) => u + v * size + 1));
-        map[size - 1][size - 1] = '';
+        let map = [...Array(size ** 2 + 1).keys()].slice(1);
+        map[size ** 2-1] = "";
         return map
       },
-      checkOption(opt, cell) {
-        let newXPos = opt[0] + cell[0]
-        let newYPos = opt[1] + cell[1]
-        return newXPos >= 0 && newYPos >= 0 && newXPos < this.size && newYPos < this.size
+      checkOption(opt) {
+        if(opt >= 0 && opt < this.size * this.size){
+          return opt
+        }
       },
-      getOptions(cell) {
-        return [[-1, 0], [0, -1], [1, 0], [0, 1]].filter(opt => this.checkOption(opt, cell))
+      getOptions() {
+        return [this.holePos - 1, this.holePos + 1, this.holePos + this.size, this.holePos - this.size]
+          .filter(opt => this.checkOption(opt))
       },
       getRndInteger(min, max) {
         return Math.floor(Math.random() * (max - min)) + min;
@@ -70,44 +74,48 @@
           this.makeMove(selectedMove)
         }
       },
-      verifyBoard() {
-        for (let y = 0; y <= this.size; y++) {
-          for (let x = 0; x < this.size; x++) {
-            let cellNum = y * this.size + x + 1
+      makeMove(index) {
+        const temp = this.cells[index];
+        this.cells[index] = ""
+        this.cells[this.holePos] = temp
+        this.holePos = index;
 
-            if (cellNum == this.size * this.size)
-              return true;
-            else if (this.cells[y][x] != cellNum)
-              return false;
-          }
-        }
-      },
-      makeMove(move) {
-        let newXPos = this.holePos[0] + move[0]
-        let newYPos = this.holePos[1] + move[1]
-        this.cells[this.holePos[1]][this.holePos[0]] = this.cells[newYPos][newXPos]
-        this.cells[newYPos][newXPos] = ''
-        this.holePos[0] = newXPos
-        this.holePos[1] = newYPos
+        [this.holeXPos,this.holeYPos] = this.toXY(index)
         this.$forceUpdate();
       },
-      checkCell(x, y) {
-        let emptyX = this.holePos[0]
-        let emptyY = this.holePos[1]
-        return ((y === emptyY && (x + 1 === emptyX || x - 1 === emptyX))
+      toXY(index){
+        return [Math.floor(index % this.size), Math.floor(index / this.size)]
+      },
+      checkCell(item, index) {
+        [this.xPos,this.yPos] = this.toXY(index)
+
+        let canMove = (this.yPos  === this.holeYPos && (this.xPos + 1 === this.holeXPos || this.xPos - 1 === this.holeXPos))
           ||
-          (x === emptyX && (y + 1 === emptyY || y - 1 === emptyY)))
+          (this.xPos === this.holeXPos && (this.yPos  + 1 === this.holeYPos || this.yPos  - 1 === this.holeYPos));
+
+        if (canMove)
+          return true
+
+        return false
+      },
+      verifyBoard() {
+        for (let y = 0; y < this.size ** 2 - 1; y++) {
+          if (this.cells[y] != y + 1){
+            return false
+          }
+        }
+        return true
       },
       step(x, y) {
         if (this.checkCell(x, y)) {
-          this.interval();
+          this.interval()
           this.begin += 1
           this.steps += 1
-          let moveX = x - this.holePos[0]
-          let moveY = y - this.holePos[1]
-          this.makeMove([moveX, moveY])
-          if (this.verifyBoard())
-            alert("Победа!")
+          this.makeMove(y)
+          if (this.verifyBoard()){
+            alert("Победа!");
+
+          }
         }
       },
       interval() {
@@ -136,9 +144,12 @@
       margin: 20px 40px;
     }
 
-    .row {
+    .game-board {
+      width: 400px;
+      height: 400px;
       display: flex;
       flex-direction: row;
+      flex-wrap: wrap;
 
       .tile {
         border: 1px solid white;
